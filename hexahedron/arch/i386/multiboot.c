@@ -24,6 +24,7 @@
 extern uintptr_t arch_allocate_structure(size_t bytes);
 extern uintptr_t arch_relocate_structure(uintptr_t structure_ptr, size_t size);
 
+
 /** 
  * @brief Parse a Multiboot 2 header and packs into a @c generic_parameters structure
  * @param bootinfo A pointer to the multiboot informatino
@@ -32,6 +33,10 @@ extern uintptr_t arch_relocate_structure(uintptr_t structure_ptr, size_t size);
 generic_parameters_t *arch_parse_multiboot2(multiboot_t *bootinfo) {
     return NULL; // TODO
 }
+
+
+
+
 
 
 
