@@ -27,6 +27,7 @@
 #include <kernel/mem/alloc.h>
 #include <kernel/mem/pmm.h>
 #include <kernel/generic_mboot.h>
+#include <kernel/misc/spinlock.h>
 
 // Architecture-specific
 #include <kernel/arch/i386/hal.h>
@@ -155,6 +156,7 @@ __attribute__((noreturn)) void arch_main(multiboot_t *bootinfo, uint32_t multibo
     dprintf(INFO, "Allocator information: %s version %i.%i (valloc %s, profiling %s)\n", info->name, info->version_major, info->version_minor,
                                             info->support_valloc ? "supported" : "not supported",
                                             info->support_profile ? "supported" : "not supported");
+
 
     for (;;);
 }
