@@ -8,7 +8,6 @@
     "stdio.h": "c",
     "arch.h": "c",
     "panic.h": "c",
-    "string.h": "c",
     "alloc.h": "c",
     "string.h": "c",
     "semaphore.h": "c"
