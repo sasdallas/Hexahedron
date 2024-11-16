@@ -193,6 +193,14 @@ void arch_mark_memory(generic_parameters_t *parameters, uintptr_t highest_addres
         mmap = mmap->next;
     }
 
+    // While working on previous versions of reduceOS, I accidentally brute-forced this.
+    // QEMU doesn't properly unmark DMA regions, apparently - according to libvfio-user issue $493
+    // https://github.com/nutanix/libvfio-user/issues/463
+
+    // These DMA regions occur within the range of 0xC0000 - 0xF0000
+    dprintf(DEBUG, "Marked memory descriptor 0xC0000 - 0xE0000 as DMA memory (QEMU bug)\n");
+    pmm_deinitializeRegion(0xC0000, 0x20000);
+
     // Unmark kernel region
     extern uint32_t __text_start;
     uintptr_t kernel_start = (uint32_t)&__text_start;
