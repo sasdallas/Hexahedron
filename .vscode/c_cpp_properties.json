@@ -1,5 +1,8 @@
 {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> origin/main
   "configurations": [
     {
       "name": "linux-gcc-x64",
@@ -12,6 +15,7 @@
       "cppStandard": "${default}",
       "intelliSenseMode": "linux-gcc-x64",
       "compilerArgs": [
+<<<<<<< HEAD
         "-D__LIBK ",
         "-D__KERNEL__ ",
         "-D__REDUCEOS__ ",
@@ -20,10 +24,14 @@
         "-m32",
         "--sysroot",
         "${workspaceFolder}/build-output/sysroot/"
+=======
+        "-D__LIBK -D__KERNEL__ -D__REDUCEOS__ -nostdinc -D__ARCH_I386__"
+>>>>>>> origin/main
       ]
     }
   ],
   "version": 4
+<<<<<<< HEAD
 =======
     "configurations": [
         {
@@ -50,4 +58,6 @@
     ],
     "version": 4
 >>>>>>> 79e7de182bf49d29ef9b891b963e4164f5d91eab
+=======
+>>>>>>> origin/main
 }

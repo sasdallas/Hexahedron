@@ -27,6 +27,7 @@
 #include <kernel/debug.h>
 #include <kernel/panic.h>
 #include <kernel/arch/arch.h>
+#include <kernel/misc/pool.h>
 
 
 static page_t       *mem_currentDirectory;      // Current page directory. Contains a list of page table entries (PTEs).
@@ -34,7 +35,8 @@ static page_t       *mem_kernelDirectory;       // Kernel page directory
                                                 // ! We're using this correctly, right?
 
 static uintptr_t    mem_kernelHeap;             // Location of the kernel heap in memory
-static uintptr_t    mem_identityMapSize;        // Size of our actual identity map (it is basically a cache)
+static uintptr_t    mem_identityMapCacheSize;   // Size of our actual identity map (it is basically a cache)
+static pool_t       *mem_mapPool = NULL;        // Identity map pool
 
 /**
  * @brief Die in the cold winter
@@ -99,16 +101,66 @@ void mem_setPaging(bool status) {
 /**
  * @brief Remap a PMM address to the identity mapped region
  * @param frame_address The address of the frame to remap
+ * @param size The size of the address to remap
  */
-uintptr_t mem_remapPhys(uintptr_t frame_address) {    
-    if (frame_address > mem_identityMapSize) {
+uintptr_t mem_remapPhys(uintptr_t frame_address, uintptr_t size) {    
+    if (frame_address + size < mem_identityMapCacheSize) {
+        return frame_address | MEM_PHYSMEM_CACHE_REGION;
+    }
+
+    if (mem_mapPool == NULL) {
+        // Initialize the map pool! We'll allocate a pool to the address.
+        // !!!: There is a potential for a disaster if mem_getPage tries to remap phys. and the pool hasn't been initialized.  
+        // !!!: Luckily this system is abstracted enugh that we can fix this, hopefully.
+        // !!!: However if the allocator hasn't been initialized, we are so screwed.
+        mem_mapPool = pool_create("map_pool", PAGE_SIZE, MEM_PHYSMEM_MAP_SIZE, MEM_PHYSMEM_MAP_REGION);
+        dprintf(INFO, "Memory map pool created\n");
+    }
+
+    if (size % PAGE_SIZE != 0) {
+        kernel_panic_extended(KERNEL_BAD_ARGUMENT_ERROR, "mem", "*** Bad size to remapPhys: 0x%x\n", size);
+    }
+
+    // Now try to get a pool address
+    uintptr_t start_addr = pool_allocateChunks(mem_mapPool, size / PAGE_SIZE);
+    if (start_addr == (uintptr_t)NULL) {
         // We've run out of space in the identity map. That's not great!
         // There should be a system in place to prevent this - it should just trigger a generic OOM error but this is also here to prevent overruns.
-        kernel_panic_extended(MEMORY_MANAGEMENT_ERROR, "mem", "*** Too much physical memory is in use. Reached the maximum size of the identity mapped region (call 0x%x).\n", frame_address);
+        kernel_panic_extended(MEMORY_MANAGEMENT_ERROR, "mem", "*** Too much physical memory is in use. Reached the maximum size of the identity mapped region (call 0x%x size 0x%x).\n", frame_address, size);
         __builtin_unreachable();
     }
 
-    return frame_address | MEM_IDENTITY_MAP_REGION;
+    for (uintptr_t i = start_addr; i < start_addr + size; i++) {
+        page_t *page = mem_getPage(NULL, i, MEM_CREATE);
+
+        mem_allocatePage(page, MEM_NOALLOC);
+        MEM_SET_FRAME(page, i);
+    }
+
+    return start_addr;
+}
+
+/**
+ * @brief Unmap a PMM address in the identity mapped region
+ * @param frame_address The address of the frame to unmap, as returned by @c mem_remapPhys
+ * @param size The size of the frame to unmap
+ */
+void mem_unmapPhys(uintptr_t frame_address, uintptr_t size) {
+    if (frame_address < MEM_PHYSMEM_CACHE_REGION) {
+        kernel_panic_extended(KERNEL_BAD_ARGUMENT_ERROR, "mem", "*** 0x%x < 0x%x\n", frame_address, MEM_PHYSMEM_CACHE_REGION);
+    }
+
+    if ((frame_address - MEM_PHYSMEM_CACHE_REGION) + size < mem_identityMapCacheSize) {
+        return; // No work to be done. It's in the cache.
+    }
+
+    if (size % PAGE_SIZE != 0) {
+        kernel_panic_extended(KERNEL_BAD_ARGUMENT_ERROR, "mem", "*** Bad size to unmapPhys: 0x%x\n", size);
+    }
+
+    // See if we can just free those chunks. Because mem_remapPhys doesn't actually use pmm_allocateBlock,
+    // we have no need to mess with pages
+    pool_freeChunks(mem_mapPool, frame_address, size / PAGE_SIZE);
 }
 
 /**
@@ -127,7 +179,7 @@ int mem_switchDirectory(page_t *pagedir) {
     mem_currentDirectory = pagedir;
 
     // Load PDBR
-    mem_load_pdbr((uintptr_t)pagedir & ~MEM_IDENTITY_MAP_REGION);
+    mem_load_pdbr((uintptr_t)pagedir & ~MEM_PHYSMEM_CACHE_REGION);
 
     return 0;
 }
@@ -165,9 +217,12 @@ uintptr_t mem_getPhysicalAddress(page_t *dir, uintptr_t virtaddr) {
         return (uintptr_t)NULL;
     }
 
-    page_t *table = (page_t*)(mem_remapPhys(MEM_GET_FRAME(pde))); // Remember to remap any frames to that identity map area.
+    // Remember to remap any frames to that identity map area.
+    page_t *table = (page_t*)(mem_remapPhys(MEM_GET_FRAME(pde), PMM_BLOCK_SIZE)); 
     page_t *pte = &(table[MEM_PAGETBL_INDEX(virtaddr)]);
     
+    mem_unmapPhys((uintptr_t)table, PMM_BLOCK_SIZE);
+
     return MEM_GET_FRAME(pte);
 }
 
@@ -214,7 +269,8 @@ page_t *mem_getPage(page_t *dir, uintptr_t addr, uintptr_t flags) {
 
         // Allocate a new PDE and zero it
         uintptr_t block = pmm_allocateBlock();
-        memset((void*)mem_remapPhys(block), 0, PMM_BLOCK_SIZE);
+        uintptr_t block_remap = mem_remapPhys(block, PMM_BLOCK_SIZE);
+        memset((void*)block_remap, 0, PMM_BLOCK_SIZE);
         
         // Setup the bits in the directory index
         pde->bits.present = 1;
@@ -222,14 +278,17 @@ page_t *mem_getPage(page_t *dir, uintptr_t addr, uintptr_t flags) {
         pde->bits.usermode = 1; // FIXME: Not upholding security 
         MEM_SET_FRAME(pde, block);
         
-        dprintf(DEBUG, "Created a new block at 0x%x\n", block);
+        mem_unmapPhys(block_remap, PMM_BLOCK_SIZE);
     }
 
     // Calculate the table index (complex bc MEM_GET_FRAME is for pointers, and I'm lazy)
-    page_t *table = (page_t*)mem_remapPhys((uintptr_t)(directory[MEM_PAGEDIR_INDEX(addr)].bits.address << MEM_PAGE_SHIFT));
+    page_t *table = (page_t*)mem_remapPhys((uintptr_t)(directory[MEM_PAGEDIR_INDEX(addr)].bits.address << MEM_PAGE_SHIFT), PMM_BLOCK_SIZE);
+
+    page_t *ret = &(table[MEM_PAGETBL_INDEX(addr)]);
+    mem_unmapPhys((uintptr_t)table, PMM_BLOCK_SIZE);
 
     // Return the page
-    return &(table[MEM_PAGETBL_INDEX(addr)]);
+    return ret;
 
 bad_page:
     return NULL;
@@ -313,12 +372,12 @@ void mem_init(uintptr_t high_address) {
     size_t frame_bytes = pmm_getMaximumBlocks() * PMM_BLOCK_SIZE;
     size_t frame_pages = (frame_bytes >> MEM_PAGE_SHIFT);
 
-    if (frame_bytes > MEM_IDENTITY_MAP_SIZE) {
-        dprintf(WARN, "Too much memory in PMM bitmap. Maximum allowed memory size is %i KB and found %i KB - limiting size\n", MEM_IDENTITY_MAP_SIZE / 1024, frame_bytes / 1024);
+    if (frame_bytes > MEM_PHYSMEM_CACHE_SIZE) {
+        dprintf(WARN, "Too much memory in PMM bitmap. Maximum allowed memory size is %i KB and found %i KB - limiting size\n", MEM_PHYSMEM_CACHE_SIZE / 1024, frame_bytes / 1024);
     }
 
     // Update size
-    mem_identityMapSize = frame_bytes; 
+    mem_identityMapCacheSize = frame_bytes; 
 
     // Identity map!
     uintptr_t frame = 0x0;
@@ -340,7 +399,7 @@ void mem_init(uintptr_t high_address) {
             page.bits.usermode = 1; // uhhhhh
             page.bits.address = (frame >> MEM_PAGE_SHIFT);
             
-            page_table[MEM_PAGETBL_INDEX(frame + MEM_IDENTITY_MAP_REGION)] = page;
+            page_table[MEM_PAGETBL_INDEX(frame + MEM_PHYSMEM_CACHE_REGION)] = page;
 
             pages_mapped++;
             if (pages_mapped == (int)(frame_pages)) break;
@@ -348,7 +407,7 @@ void mem_init(uintptr_t high_address) {
         }
         
         // Create a PDE
-        page_t *pde = &(page_directory[MEM_PAGEDIR_INDEX(table_frame + MEM_IDENTITY_MAP_REGION)]);
+        page_t *pde = &(page_directory[MEM_PAGEDIR_INDEX(table_frame + MEM_PHYSMEM_CACHE_REGION)]);
         pde->bits.present = 1;
         pde->bits.rw = 1;
         pde->bits.usermode = 1; // uhhhhhhhhhh
@@ -416,6 +475,7 @@ void mem_init(uintptr_t high_address) {
     mem_kernelDirectory = page_directory;
     mem_switchDirectory(mem_kernelDirectory);
     mem_setPaging(true);
+    dprintf(INFO, "Memory system online\n");
 }
 
 
