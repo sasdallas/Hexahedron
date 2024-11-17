@@ -1,3 +1,10 @@
 {
-  "C_Cpp_Runner.msvcBatchPath": ""
+  "C_Cpp_Runner.msvcBatchPath": "",
+  "files.associations": {
+    "*.asm": "asm-collection",
+    "*.S": "gas",
+    "errno.h": "c",
+    "alloc.h": "c",
+    "semaphore.h": "c"
+  }
 }
