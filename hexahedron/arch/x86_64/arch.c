@@ -212,6 +212,13 @@ void arch_set_gsbase(uintptr_t base) {
 }
 
 /**
+ * @brief Set the SYSCALL handler
+ */
+void arch_initialize_syscall_handler() {
+    
+}
+
+/**
  * @brief Main architecture function
  */
 void arch_main(multiboot_t *bootinfo, uint32_t multiboot_magic, void *esp) {

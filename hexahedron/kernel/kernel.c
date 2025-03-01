@@ -110,26 +110,35 @@ void kernel_loadDrivers() {
 }
 
 
+struct timeval tv_start;
+
 void kthread() {
     for (;;) {
-        if (current_cpu->current_process->pid == 1) {
-            terminal_clear(TERMINAL_DEFAULT_FG, TERMINAL_DEFAULT_BG);
+        // if (current_cpu->current_process->pid == 1) {
+        //     terminal_clear(TERMINAL_DEFAULT_FG, TERMINAL_DEFAULT_BG);
 
-            terminal_setXY(100, 100);
-            printf("==== CURRENT PROCESSES\n");
-            for (unsigned i = 0; i < arch_get_generic_parameters()->cpu_count; i++) {
-                if (processor_data[i].current_process && processor_data[i].current_thread) printf("\tCPU%d: Process \"%s\" (%ld ticks so far)\n", i, processor_data[i].current_process->name, processor_data[i].current_thread->total_ticks);
-                else printf("\tCPU%d: No thread/no process\n", i);
-            }
+        //     #include <kernel/drivers/clock.h>
+            
+            
+        //     struct timeval tv;
+        //     gettimeofday(&tv, NULL);
+        //     if (!tv_start.tv_sec) tv_start = tv;
 
-            extern volatile int task_switches;
-            printf("==== TASK SWITCHES: %d\n", task_switches);
-        
-            printf("==== CORE IDLE TIMES\n");
-            for (unsigned i = 0; i < arch_get_generic_parameters()->cpu_count; i++) {
-                if (processor_data[i].idle_process && processor_data[i].idle_process->main_thread) printf("\tCPU%d: %ld cycles\n", i, processor_data[i].idle_process->main_thread->total_ticks);
-            }
-        }
+        //     terminal_setXY(100, 100);
+        //     printf("==== CURRENT PROCESSES\n");
+        //     for (unsigned i = 0; i < arch_get_generic_parameters()->cpu_count; i++) {
+        //         if (processor_data[i].current_process && processor_data[i].current_thread) printf("\tCPU%d: Process \"%s\" (%ld ticks so far)\n", i, processor_data[i].current_process->name, processor_data[i].current_thread->total_ticks);
+        //         else printf("\tCPU%d: No thread/no process\n", i);
+        //     }
+
+        //     extern volatile int task_switches;
+        //     if ((tv.tv_sec - tv_start.tv_sec)) {
+        //         printf("==== TASK SWITCHES: %d (%d switches per second)\n", task_switches, task_switches / (tv.tv_sec - tv_start.tv_sec));
+        //     } else {
+        //         printf("==== TASK SWITCHES: %d (give it a second, scheduler is waking up)\n", task_switches);
+        //     }
+        //     printf("==== WE HAVE NOT CRASHED FOR %d SECONDS\n", tv.tv_sec - tv_start.tv_sec);
+        // }
         arch_pause();
         process_yield(1);
     }
@@ -201,8 +210,6 @@ void kmain() {
         LOG(WARN, "Not loading any drivers, found argument \"--no-load-drivers\".\n");
     }
 
-
-
     // Unmap 0x0 (fault detector, temporary)
     page_t *pg = mem_getPage(NULL, 0, MEM_CREATE);
     mem_allocatePage(pg, MEM_PAGE_NOT_PRESENT | MEM_PAGE_NOALLOC | MEM_PAGE_READONLY);
@@ -213,7 +220,7 @@ void kmain() {
 
     char name[256] = { 0 };
 
-    for (int i = 1; i <= 32; i++) {
+    for (int i = 1; i <= 2; i++) {
         snprintf(name, 256, "kthread%d", i);
         process_t *process = process_create(name, PROCESS_STARTED | PROCESS_KERNEL, PRIORITY_MED);
         process->main_thread = thread_create(process, NULL, (uintptr_t)&kthread, THREAD_FLAG_KERNEL);
