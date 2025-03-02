@@ -113,32 +113,35 @@ void kernel_loadDrivers() {
 struct timeval tv_start;
 
 void kthread() {
+    int iterations = 0;
     for (;;) {
-        // if (current_cpu->current_process->pid == 1) {
-        //     terminal_clear(TERMINAL_DEFAULT_FG, TERMINAL_DEFAULT_BG);
+        if (current_cpu->current_process->pid == 1) {
+            terminal_clear(TERMINAL_DEFAULT_FG, TERMINAL_DEFAULT_BG);
 
-        //     #include <kernel/drivers/clock.h>
+            #include <kernel/drivers/clock.h>
             
             
-        //     struct timeval tv;
-        //     gettimeofday(&tv, NULL);
-        //     if (!tv_start.tv_sec) tv_start = tv;
+            struct timeval tv;
+            gettimeofday(&tv, NULL);
+            if (!tv_start.tv_sec) tv_start = tv;
 
-        //     terminal_setXY(100, 100);
-        //     printf("==== CURRENT PROCESSES\n");
-        //     for (unsigned i = 0; i < arch_get_generic_parameters()->cpu_count; i++) {
-        //         if (processor_data[i].current_process && processor_data[i].current_thread) printf("\tCPU%d: Process \"%s\" (%ld ticks so far)\n", i, processor_data[i].current_process->name, processor_data[i].current_thread->total_ticks);
-        //         else printf("\tCPU%d: No thread/no process\n", i);
-        //     }
+            terminal_setXY(100, 100);
+            printf("==== CURRENT PROCESSES\n");
+            for (unsigned i = 0; i < arch_get_generic_parameters()->cpu_count; i++) {
+                if (processor_data[i].current_process && processor_data[i].current_thread) printf("\tCPU%d: Process \"%s\" (%ld ticks so far)\n", i, processor_data[i].current_process->name, processor_data[i].current_thread->total_ticks);
+                else printf("\tCPU%d: No thread/no process\n", i);
+            }
 
-        //     extern volatile int task_switches;
-        //     if ((tv.tv_sec - tv_start.tv_sec)) {
-        //         printf("==== TASK SWITCHES: %d (%d switches per second)\n", task_switches, task_switches / (tv.tv_sec - tv_start.tv_sec));
-        //     } else {
-        //         printf("==== TASK SWITCHES: %d (give it a second, scheduler is waking up)\n", task_switches);
-        //     }
-        //     printf("==== WE HAVE NOT CRASHED FOR %d SECONDS\n", tv.tv_sec - tv_start.tv_sec);
-        // }
+            extern volatile int task_switches;
+            if ((tv.tv_sec - tv_start.tv_sec)) {
+                printf("==== TASK SWITCHES: %d (%d switches per second)\n", task_switches, task_switches / (tv.tv_sec - tv_start.tv_sec));
+            } else {
+                printf("==== TASK SWITCHES: %d (give it a second, scheduler is waking up)\n", task_switches);
+            }
+            printf("==== WE HAVE NOT CRASHED FOR %d SECONDS\n", tv.tv_sec - tv_start.tv_sec);
+        }
+        iterations++;
+        dprintf(DEBUG, "Hi from %s! This is iteration %d\n", current_cpu->current_process->name, iterations);
         arch_pause();
         process_yield(1);
     }
@@ -183,6 +186,7 @@ void kmain() {
     } else {
         LOG(ERR, "Could not find new font file \"/device/initrd/ter-112n.psf\", using old font\n");
     }
+    printf("Loaded font from initial ramdisk successfully\n");
 
     // At this point in time if the user wants to view debugging output not on the serial console, they
     // can. Look for kernel boot argument "--debug=console"
@@ -202,12 +206,15 @@ void kmain() {
     fs_close(symfile);
 
     LOG(INFO, "Loaded %i symbols from symbol map\n", symbols);
+    printf("Loaded kernel symbol map from initial ramdisk successfully\n");
 
     // Load drivers
     if (!kargs_has("--no-load-drivers")) {
         kernel_loadDrivers();
+        printf(COLOR_CODE_GREEN     "Successfully loaded all drivers from ramdisk\n");
     } else {
         LOG(WARN, "Not loading any drivers, found argument \"--no-load-drivers\".\n");
+        printf(COLOR_CODE_YELLOW    "Refusing to load drivers because of kernel argument \"--no-load-drivers\" - careful!\n");
     }
 
     // Unmap 0x0 (fault detector, temporary)
