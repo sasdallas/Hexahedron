@@ -1,6 +1,10 @@
 # Hexahedron
 Hexahedron is a modern replacement for the reduceOS kernel.
 
+> [!WARNING]  
+> Hexahedron has been merged into the reduceOS project and this repository is now obsolete.
+
+
 ## What is this?
 A replacement for the reduceOS kernel, developed to follow standards better and have higher code quality.
 
